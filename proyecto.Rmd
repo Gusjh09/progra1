@@ -1,0 +1,300 @@
+---
+title: "Proyecto"
+author: "Gustavo Jimenez Hidalgo"
+date: "2025-07-01"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+
+.......inicio del proyecto.......
+
+1. CARGA DE ARCHIVOS NECESARIOS PARA LA APLICACIÓN
+```{r}
+#trabajando en setworkingdirectory
+
+library(readr)
+peliculas <- read_csv("movies.csv")
+View(peliculas)
+
+library(readr)
+enlaces <- read_csv("links.csv")
+View(enlaces)
+
+library(readr)
+calificaciones <- read_csv("ratings.csv")
+View(calificaciones)
+
+library(readr)
+tags <- read_csv("tags.csv")
+View(tags)
+
+```
+2. CARGA DE LIBRERÍAS
+
+```{r}
+install.packages("shiny")
+install.packages("stringr")
+install.packages("dplyr")
+install.packages("tidyr")
+install.packages("ggplot2")
+library(shiny)
+library(ggplot2)
+library(stringr)
+library(dplyr)
+library(tidyr)
+
+```
+
+EXTRACION DEL AÑO DEL DF DE PELICULAS Y RECOLOCACION DE COLUMNA A LA DERECHA
+```{r}
+peliculas <- peliculas %>%
+  mutate(año = as.numeric(str_extract(title, "(?<=\\()\\d{4}(?=\\))"))) %>% #esto es para quitar el año de los titulos 
+  relocate(año, .after = genres)
+peliculas
+
+```
+
+
+CREACION DEL DATA FRAME DE TRABAJO
+```{r}
+
+peliculasdf <- peliculas %>% 
+  mutate(titulo = str_remove(title, "\\s*\\(\\d{4}\\)")) %>%
+  select(movieId, titulo, año)
+
+# hay que sacar los promedios de las calificaciones, ya que se repiten 
+calificaciones_prom <- calificaciones %>%
+  group_by(movieId) %>%
+  summarise(rating = mean(rating, na.rm = TRUE))
+
+peliculasdf <- peliculasdf %>%
+  left_join(calificaciones_prom, by = "movieId")
+
+# separar los generos, ya que estan unidos en una misma columna
+generos <- peliculas %>%
+  separate_rows(genres, sep = "\\|")
+
+#verificar los dataframes finales
+
+View(peliculasdf)
+View(generos)
+
+
+#ahora hacemos solo un dataframe para evitar errores con los shiny 
+datos <- peliculasdf %>%
+  left_join(generos, by = "movieId") %>%
+  left_join(calificaciones_prom, by = "movieId") %>%
+  distinct()
+View(datos)
+
+datos
+datos <- datos %>%
+  select(movieId, title, año = año.x, rating = rating.x, genres) %>%
+  distinct()
+
+#vamos a renombrar adecuadamente:
+
+datos <- datos %>% 
+  mutate(titulo = str_remove(title, "\\s*\\(\\d{4}\\)")) %>%
+  select(movieId, titulo, año, rating, genres) %>%
+  rename(
+    identificador = movieId,
+    calificacion = rating,
+    genero = genres
+  )
+
+View(datos) # dataframe final 
+```
+
+DATOS PARA LOS GRÁFICOS 
+
+```{r}
+#estos son los datos de los graficos, me quede solo con los 10 primeros datos de la lista de datos de interes para mas agilidad al momento de visualizar, ya que sino me quedaban los graficos muy sobrecargados
+
+generosmejorcalificados <- datos %>%
+  group_by(genero) %>%
+  summarise(
+  promedio = mean(calificacion, na.rm = TRUE),
+  cantidad = n()
+  )%>%
+  arrange(desc(promedio)) %>%
+  slice_head(n = 10)
+
+
+generospeorcalificados <- datos %>%
+  group_by(genero) %>%
+  summarise(
+  promedio = mean(calificacion, na.rm = TRUE),
+  cantidad = n()
+  ) %>%
+  arrange(promedio) %>%    
+  slice_head(n = 10)        
+
+distribuciondegenros <- datos %>%
+  group_by(genero) %>%
+  summarise(cantidad = n()) %>%
+  mutate(
+  porcentaje = cantidad / sum(cantidad) * 100,
+  porcentaje = round(porcentaje, 1) #esto es para eliminar muchos decimales de los porcentajes
+  ) %>%
+  arrange(desc(porcentaje)) %>%
+  slice_head(n = 10)
+
+```
+
+
+
+SHINNY APP
+```{r}
+
+#interfaz del usuario 
+ui <- fluidPage(
+  titlePanel("Visualización de los datos"),
+  
+  sidebarLayout(
+  sidebarPanel(
+  sliderInput("rango_año", "Seleccione el rango de años:",
+  min = min(datos$año, na.rm = TRUE),
+  max = max(datos$año, na.rm = TRUE),
+  value = c(min(datos$año, na.rm = TRUE), max(datos$año, na.rm = TRUE)),
+  sep = ""),
+      
+  selectInput("genero", "Filtrar por género:",
+  choices = sort(unique(datos$genero)),
+  selected = NULL,
+  multiple = TRUE),
+      
+  selectInput("orden", "Ordenar por calificación:",
+  choices = c("mayor a menor" = "desc", "menor a mayor" = "asc"),
+  selected = "desc"),
+      
+  numericInput("cantidad", "¿Cuántas peliculas desea visualizar:", 
+                   value = 20, min = 1, max = 100, step = 1)
+    ),
+
+    mainPanel(
+    tabsetPanel(
+    tabPanel("Tabla de películas", tableOutput("tabla_peliculas")),
+    tabPanel("Gráfico de pastel", plotOutput("grafico_pastel")),
+    tabPanel("Géneros mejor rankeados", plotOutput("grafico_generos_mejor")),
+    tabPanel("Géneros peor rankeados", plotOutput("grafico_generos_peor"))
+      )
+    )
+  )
+)
+
+#ajustes del servidor, no  tocar. 
+
+server <- function(input, output) {
+  
+  datosfiltrados <- reactive({
+    dataframe1 <- datos %>%
+    filter(año >= input$rango_año[1], año <= input$rango_año[2])
+    
+    if (!is.null(input$genero) && length(input$genero) > 0) {
+      dataframe1 <- dataframe1 %>% filter(genero %in% input$genero)
+    }
+    dataframe1
+  })
+  
+  output$tabla_peliculas <- renderTable({
+    dataframe2 <- datosfiltrados() %>%
+      select(titulo, año, genero, calificacion) %>%
+      distinct()
+    
+    if (input$orden == "desc") {
+      dataframe2 <- dataframe2 %>% arrange(desc(calificacion))
+    } else {
+      dataframe2 <- dataframe2 %>% arrange(calificacion)
+    }
+    head(dataframe2, input$cantidad)
+  })
+  
+  output$grafico_generos_mejor <- renderPlot({
+    ggplot(generosmejorcalificados, aes(x = reorder(genero, promedio), y = promedio)) +
+      geom_col(fill = "green") +
+      coord_flip() +
+      labs(title = "10 Géneros mejor calificados",
+           x = "Género",
+           y = "Calificación promedio") +
+      theme_minimal()
+  })
+  
+  output$grafico_generos_peor <- renderPlot({
+    ggplot(generospeorcalificados, aes(x = reorder(genero, promedio), y = promedio)) +
+      geom_col(fill = "red") +
+      coord_flip() +
+      labs(title = "10 Géneros peor calificados",
+           x = "Género",
+           y = "Calificación promedio") +
+      theme_minimal()
+  })
+  
+  output$grafico_pastel <- renderPlot({
+    ggplot(distribuciondegenros, aes(x = "", y = porcentaje, fill = genero)) +
+      geom_bar(stat = "identity", width = 1, color = "blue") +
+      coord_polar(theta = "y") +
+      labs(title = "Distribución de películas por género") +
+      theme_void() +
+      geom_text(aes(label = paste0(formatC(porcentaje, format = "f", digits = 1), "%")),
+                position = position_stack(vjust = 0.5)) +
+      theme(legend.position = "right")
+  })
+  
+}
+
+shinyApp(ui, server)
+
+
+```
+
+Seccion de graficos
+
+
+```{r}
+ggplot(generosmejorcalificados, aes(x = reorder(genero, promedio), y = promedio)) +
+  geom_col(fill = "green") +
+  coord_flip() +
+  labs(title = "Calificación promedio por género",
+       x = "Género",
+       y = "Calificación promedio") +
+  theme_minimal()
+
+
+
+ggplot(distribuciondegenros, aes(x = "", y = porcentaje, fill = genero)) +
+  geom_bar(stat = "identity", width = 1, color = "white") +
+  coord_polar(theta = "y") +
+  labs(title = "Distribución de películas por género") +
+  theme_void() +  # elimina ejes y fondo
+  geom_text(aes(label = paste0(porcentaje, "%")),
+            position = position_stack(vjust = 0.5)) +
+  theme(legend.position = "right")
+
+```
