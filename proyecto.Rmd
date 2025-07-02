@@ -213,16 +213,17 @@ ui <- fluidPage(
 
 server <- function(input, output) {
   
+  #filtra los datos segun el año y genero
+  
   datosfiltrados <- reactive({
     dataframe1 <- datos %>%
     filter(año >= input$rango_año[1], año <= input$rango_año[2])
-    
-    if (!is.null(input$genero) && length(input$genero) > 0) {
+      if (!is.null(input$genero) && length(input$genero) > 0) {
       dataframe1 <- dataframe1 %>% filter(genero %in% input$genero)
     }
     dataframe1
   })
-  
+  #tabla de peliculas filtradas y ordenadas
   output$tabla_peliculas <- renderTable({
     dataframe2 <- datosfiltrados() %>%
       select(titulo, año, genero, calificacion) %>%
@@ -235,27 +236,28 @@ server <- function(input, output) {
     }
     head(dataframe2, input$cantidad)
   })
-  
+  #grafico de los 10 generos mejor calificados
   output$grafico_generos_mejor <- renderPlot({
-    ggplot(generosmejorcalificados, aes(x = reorder(genero, promedio), y = promedio)) +
-      geom_col(fill = "green") +
-      coord_flip() +
-      labs(title = "10 Géneros mejor calificados",
-           x = "Género",
-           y = "Calificación promedio") +
+  ggplot(generosmejorcalificados, aes(x = reorder(genero, promedio), y = promedio)) +
+   geom_col(fill = "green") +
+  coord_flip() +
+  labs(title = "10 Géneros mejor calificados",
+   x = "Género",
+    y = "Calificación promedio") +
       theme_minimal()
   })
-  
+  #grafico de los 10 generos peor calificados 
   output$grafico_generos_peor <- renderPlot({
     ggplot(generospeorcalificados, aes(x = reorder(genero, promedio), y = promedio)) +
-      geom_col(fill = "red") +
-      coord_flip() +
-      labs(title = "10 Géneros peor calificados",
+  geom_col(fill = "red") +
+   coord_flip() +
+   labs(title = "10 Géneros peor calificados",
            x = "Género",
            y = "Calificación promedio") +
       theme_minimal()
   })
   
+  #grafico de pastel que distribuye las pelis por generos 
   output$grafico_pastel <- renderPlot({
     ggplot(distribuciondegenros, aes(x = "", y = porcentaje, fill = genero)) +
       geom_bar(stat = "identity", width = 1, color = "blue") +
@@ -268,6 +270,7 @@ server <- function(input, output) {
   })
   
 }
+#laucher de la app
 
 shinyApp(ui, server)
 
@@ -278,23 +281,31 @@ Seccion de graficos
 
 
 ```{r}
-ggplot(generosmejorcalificados, aes(x = reorder(genero, promedio), y = promedio)) +
-  geom_col(fill = "green") +
-  coord_flip() +
-  labs(title = "Calificación promedio por género",
-       x = "Género",
-       y = "Calificación promedio") +
-  theme_minimal()
 
+#codigo para generar los graficos sin necesidad de lanzar la aplicacion 
+ggplot(generospeorcalificados, aes(x = reorder(genero, promedio), y = promedio)) +
+  geom_col(fill = "red") +
+   coord_flip() +
+   labs(title = "10 Géneros peor calificados",
+           x = "Género",
+           y = "Calificación promedio") +
+      theme_minimal()
 
+ggplot(generospeorcalificados, aes(x = reorder(genero, promedio), y = promedio)) +
+  geom_col(fill = "red") +
+   coord_flip() +
+   labs(title = "10 Géneros peor calificados",
+           x = "Género",
+           y = "Calificación promedio") +
+      theme_minimal()
 
 ggplot(distribuciondegenros, aes(x = "", y = porcentaje, fill = genero)) +
-  geom_bar(stat = "identity", width = 1, color = "white") +
-  coord_polar(theta = "y") +
-  labs(title = "Distribución de películas por género") +
-  theme_void() +  # elimina ejes y fondo
-  geom_text(aes(label = paste0(porcentaje, "%")),
-            position = position_stack(vjust = 0.5)) +
-  theme(legend.position = "right")
+      geom_bar(stat = "identity", width = 1, color = "blue") +
+      coord_polar(theta = "y") +
+      labs(title = "Distribución de películas por género") +
+      theme_void() +
+      geom_text(aes(label = paste0(formatC(porcentaje, format = "f", digits = 1), "%")),
+                position = position_stack(vjust = 0.5)) +
+      theme(legend.position = "right")
 
 ```
